@@ -1,9 +1,13 @@
 package com.mocircle.flume.source;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 
 import org.apache.flume.Event;
 import org.apache.flume.client.avro.ReliableEventReader;
@@ -133,7 +137,34 @@ public class ReliableWinlogEventReader implements ReliableEventReader {
 
 	@Override
 	public void commit() throws IOException {
-
+		saveRecordFile();
 	}
 
+	private Map<String, Long> loadRecordFile() {
+		Map<String, Long> records = new HashMap<>();
+		File file = new File(recordStatusFile);
+		if (file.exists()) {
+			Properties prop = new Properties();
+			try (FileInputStream fis = new FileInputStream(file)) {
+				prop.load(fis);
+			} catch (IOException e) {
+			}
+			for (EventEntryIterator iterator : logIterators.values()) {
+				records.put(iterator.getChannelName(), (Long) prop.get(iterator.getChannelName()));
+			}
+		}
+		return records;
+	}
+
+	private void saveRecordFile() {
+		File file = new File(recordStatusFile);
+		Properties prop = new Properties();
+		for (EventEntryIterator iterator : logIterators.values()) {
+			prop.put(iterator.getChannelName(), iterator.getLastRecordId() == null ? "" : iterator.getLastRecordId());
+		}
+		try (FileOutputStream fos = new FileOutputStream(file)) {
+			prop.store(fos, null);
+		} catch (IOException e) {
+		}
+	}
 }

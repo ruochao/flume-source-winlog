@@ -13,6 +13,7 @@ public interface WinlogSourceConstants {
 	 * Indicate the windows event log is from remote computer or local computer
 	 */
 	String REMOTE = "remote";
+	boolean DEFAULT_REMOTE = false;
 
 	/**
 	 * Remote computer name
@@ -39,6 +40,7 @@ public interface WinlogSourceConstants {
 	 * "negotiate", "kerberos", "ntlm".
 	 */
 	String AUTH_METHOD = "authMethod";
+	String DEFAULT_AUTH_METHOD = AuthMethodConfig.DEFAULT.name();
 
 	/**
 	 * Indicate which event channels need to be consumed, separate by comma.
@@ -51,29 +53,24 @@ public interface WinlogSourceConstants {
 	 * "future".
 	 */
 	String RETRIEVE_MODE = "retrieveMode";
+	String DEFAULT_RETRIEVE_MODE = RetrieveModeConfig.OLDEST.name();
 
 	/**
 	 * Only applies if retrieveMode is record.
 	 */
 	String START_RECORD_IDS = "startRecordIds";
+	long DEFAULT_START_RECORD_ID = 0;
 
 	/**
 	 * The file path which records the event status/position.
 	 */
 	String RECORD_STATUS_FILE = "recordStatusFile";
-
-	//
-	// Default values for configuration
-	//
-
-	boolean DEFAULT_REMOTE = false;
-
-	String DEFAULT_AUTH_METHOD = AuthMethodConfig.DEFAULT.name();
-
-	String DEFAULT_RETRIEVE_MODE = RetrieveModeConfig.OLDEST.name();
-
-	long DEFAULT_START_RECORD_ID = 0;
-	
 	String DEFAULT_RECORD_STATUS_FILE = "records.status";
+
+	/**
+	 * 
+	 */
+	String BATCH_SIZE = "batchSize";
+	int DEFAULT_BATCH_SIZE = 100;
 
 }

@@ -1,12 +1,17 @@
 package com.mocircle.flume.source;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.flume.Context;
+import org.apache.flume.Event;
 import org.apache.flume.EventDeliveryException;
 import org.apache.flume.FlumeException;
 import org.apache.flume.conf.Configurable;
 import org.apache.flume.source.AbstractPollableSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
@@ -15,6 +20,8 @@ import com.mocircle.flume.source.config.RetrieveModeConfig;
 import com.mocircle.flume.source.utils.ConfigUtils;
 
 public class WinlogSource extends AbstractPollableSource implements Configurable, WinlogSourceConstants {
+
+	private static final Logger LOG = LoggerFactory.getLogger(WinlogSource.class);
 
 	private boolean remote;
 	private String server;
@@ -26,6 +33,7 @@ public class WinlogSource extends AbstractPollableSource implements Configurable
 	private RetrieveModeConfig retrieveMode;
 	private long[] startRecordIds;
 	private String recordStatusFile;
+	private int batchSize;
 
 	private ReliableWinlogEventReader eventReader;
 
@@ -70,13 +78,12 @@ public class WinlogSource extends AbstractPollableSource implements Configurable
 
 		String homePath = System.getProperty("user.home").replace('\\', '/');
 		recordStatusFile = context.getString(RECORD_STATUS_FILE, homePath + DEFAULT_RECORD_STATUS_FILE);
-
-		buildEventReader();
+		batchSize = context.getInteger(BATCH_SIZE, DEFAULT_BATCH_SIZE);
 	}
 
 	@Override
 	protected void doStart() throws FlumeException {
-
+		buildEventReader();
 	}
 
 	@Override
@@ -86,16 +93,30 @@ public class WinlogSource extends AbstractPollableSource implements Configurable
 
 	@Override
 	protected Status doProcess() throws EventDeliveryException {
-		for (String channel : eventChannels) {
-			try {
+		Status status = Status.READY;
+		try {
+			for (String channel : eventChannels) {
 				eventReader.setCurrentEventChannel(channel);
-				eventReader.readEvents(10);
-			} catch (IOException e) {
-
-				return Status.BACKOFF;
+				List<Event> events = eventReader.readEvents(batchSize);
+				if (events != null && !events.isEmpty()) {
+					getChannelProcessor().processEventBatch(events);
+					System.out.println("Processed: " + events.size() + " events");
+				} else {
+					status = Status.BACKOFF;
+				}
 			}
+
+			try {
+				TimeUnit.MILLISECONDS.sleep(1000);
+			} catch (InterruptedException e) {
+				LOG.info("Interrupted while sleeping");
+			}
+
+		} catch (IOException e) {
+			LOG.warn("Read event failed", e);
+			return Status.BACKOFF;
 		}
-		return Status.READY;
+		return status;
 	}
 
 	private void buildEventReader() {
