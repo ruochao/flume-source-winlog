@@ -2,6 +2,8 @@ package com.mocircle.flume.source;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.flume.Context;
@@ -15,6 +17,7 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.mocircle.flume.source.config.AuthMethodConfig;
 import com.mocircle.flume.source.config.RetrieveModeConfig;
 import com.mocircle.flume.source.utils.ConfigUtils;
@@ -34,8 +37,19 @@ public class WinlogSource extends AbstractPollableSource implements Configurable
 	private long[] startRecordIds;
 	private String recordStatusFile;
 	private int batchSize;
+	private long recordReadingInterval;
+	private long recordWritingInterval;
+	private long recordWritingInitDelay;
 
-	private ReliableWinlogEventReader eventReader;
+	private WinlogEventReader eventReader;
+	private ScheduledExecutorService recordWriterExecutor;
+	private Runnable recordWriterRunnable = new Runnable() {
+		public void run() {
+			if (eventReader != null) {
+				eventReader.persistCommit();
+			}
+		}
+	};
 
 	public WinlogSource() {
 	}
@@ -79,11 +93,19 @@ public class WinlogSource extends AbstractPollableSource implements Configurable
 		String homePath = System.getProperty("user.home").replace('\\', '/');
 		recordStatusFile = context.getString(RECORD_STATUS_FILE, homePath + DEFAULT_RECORD_STATUS_FILE);
 		batchSize = context.getInteger(BATCH_SIZE, DEFAULT_BATCH_SIZE);
+		recordReadingInterval = context.getLong(RECORD_READING_INTERVAL, DEFAULT_RECORD_READING_INTERVAL);
+		recordWritingInterval = context.getLong(RECORD_WRITING_INTERVAL, DEFAULT_RECORD_WRITING_INTERVAL);
+		recordWritingInitDelay = context.getLong(RECORD_WRITING_INIT_DELAY, DEFAULT_RECORD_WRITING_INIT_DELAY);
 	}
 
 	@Override
 	protected void doStart() throws FlumeException {
 		buildEventReader();
+
+		recordWriterExecutor = Executors
+				.newSingleThreadScheduledExecutor(new ThreadFactoryBuilder().setNameFormat("recordWriter").build());
+		recordWriterExecutor.scheduleAtFixedRate(recordWriterRunnable, recordWritingInitDelay, recordWritingInterval,
+				TimeUnit.MILLISECONDS);
 	}
 
 	@Override
@@ -96,31 +118,32 @@ public class WinlogSource extends AbstractPollableSource implements Configurable
 		Status status = Status.READY;
 		try {
 			for (String channel : eventChannels) {
-				eventReader.setCurrentEventChannel(channel);
-				List<Event> events = eventReader.readEvents(batchSize);
+				List<Event> events = eventReader.readEvents(channel, batchSize);
 				if (events != null && !events.isEmpty()) {
 					getChannelProcessor().processEventBatch(events);
-					System.out.println("Processed: " + events.size() + " events");
+					eventReader.commitInMemory();
+					LOG.debug("Processed " + events.size() + " events");
 				} else {
 					status = Status.BACKOFF;
 				}
 			}
 
 			try {
-				TimeUnit.MILLISECONDS.sleep(1000);
+				TimeUnit.MILLISECONDS.sleep(recordReadingInterval);
 			} catch (InterruptedException e) {
 				LOG.info("Interrupted while sleeping");
 			}
 
 		} catch (IOException e) {
-			LOG.warn("Read event failed", e);
+			LOG.warn("Read event failed, roll back event reader", e);
+			eventReader.rollback();
 			return Status.BACKOFF;
 		}
 		return status;
 	}
 
 	private void buildEventReader() {
-		eventReader = new ReliableWinlogEventReader.Builder() //
+		eventReader = new WinlogEventReader.Builder() //
 				.withSourceConfig(remote, server, userName, domain, password, authMethod) //
 				.withEventConfig(eventChannels, retrieveMode, startRecordIds) //
 				.withReaderConfig(recordStatusFile) //

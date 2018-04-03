@@ -73,4 +73,22 @@ public interface WinlogSourceConstants {
 	String BATCH_SIZE = "batchSize";
 	int DEFAULT_BATCH_SIZE = 100;
 
+	/**
+	 * 
+	 */
+	String RECORD_READING_INTERVAL = "recordReadingInterval";
+	long DEFAULT_RECORD_READING_INTERVAL = 2000;
+
+	/**
+	 * 
+	 */
+	String RECORD_WRITING_INTERVAL = "recordWritingInterval";
+	long DEFAULT_RECORD_WRITING_INTERVAL = 2000;
+
+	/**
+	 * 
+	 */
+	String RECORD_WRITING_INIT_DELAY = "recordWritingInitDelay";
+	long DEFAULT_RECORD_WRITING_INIT_DELAY = 2000;
+
 }

@@ -45,13 +45,18 @@ public class TestWinlogSource {
 	public void test() {
 		Context context = new Context();
 		context.put("remote", "false");
-		context.put("eventChannels", "application");
+		context.put("eventChannels", "application, security,system");
+		context.put("recordStatusFile", "d:\\record.status");
+		context.put("batchSize", "10");
 
 		Configurables.configure(source, context);
 		source.start();
 		try {
-			source.process();
-		} catch (EventDeliveryException e) {
+			while (true) {
+				Thread.sleep(1000);
+				source.process();
+			}
+		} catch (Exception e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
