@@ -19,6 +19,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.mocircle.flume.source.config.AuthMethodConfig;
+import com.mocircle.flume.source.config.CheckpointModeConfig;
 import com.mocircle.flume.source.config.RetrieveModeConfig;
 import com.mocircle.flume.source.utils.ConfigUtils;
 
@@ -37,13 +38,14 @@ public class WinlogSource extends AbstractPollableSource implements Configurable
 	private long[] startRecordIds;
 	private String recordStatusFile;
 	private int batchSize;
-	private long recordReadingInterval;
-	private long recordWritingInterval;
-	private long recordWritingInitDelay;
+	private long eventInterval;
+	private CheckpointModeConfig checkpointMode;
+	private long checkpointInterval;
+	private long checkpointInitDelay;
 
 	private WinlogEventReader eventReader;
-	private ScheduledExecutorService recordWriterExecutor;
-	private Runnable recordWriterRunnable = new Runnable() {
+	private ScheduledExecutorService checkpointExecutor;
+	private Runnable checkpointRunnable = new Runnable() {
 		public void run() {
 			if (eventReader != null) {
 				eventReader.persistCommit();
@@ -93,19 +95,31 @@ public class WinlogSource extends AbstractPollableSource implements Configurable
 		String homePath = System.getProperty("user.home").replace('\\', '/');
 		recordStatusFile = context.getString(RECORD_STATUS_FILE, homePath + DEFAULT_RECORD_STATUS_FILE);
 		batchSize = context.getInteger(BATCH_SIZE, DEFAULT_BATCH_SIZE);
-		recordReadingInterval = context.getLong(RECORD_READING_INTERVAL, DEFAULT_RECORD_READING_INTERVAL);
-		recordWritingInterval = context.getLong(RECORD_WRITING_INTERVAL, DEFAULT_RECORD_WRITING_INTERVAL);
-		recordWritingInitDelay = context.getLong(RECORD_WRITING_INIT_DELAY, DEFAULT_RECORD_WRITING_INIT_DELAY);
+		eventInterval = context.getLong(EVENT_INTERVAL, DEFAULT_EVENT_INTERVAL);
+
+		try {
+			checkpointMode = CheckpointModeConfig
+					.valueOf(context.getString(CHECKPOINT_MODE, DEFAULT_CHECKPOINT_MODE).toUpperCase());
+		} catch (IllegalArgumentException e) {
+			throw new FlumeException(
+					"Unsupported checkpointMode: " + context.getString(CHECKPOINT_MODE, DEFAULT_CHECKPOINT_MODE));
+		}
+		if (checkpointMode == CheckpointModeConfig.SCHEDULED) {
+			checkpointInitDelay = context.getLong(CHECKPOINT_INIT_DELAY, DEFAULT_CHECKPOINT_INIT_DELAY);
+			checkpointInterval = context.getLong(CHECKPOINT_INTERVAL, DEFAULT_CHECKPOINT_INTERVAL);
+		}
 	}
 
 	@Override
 	protected void doStart() throws FlumeException {
 		buildEventReader();
 
-		recordWriterExecutor = Executors
-				.newSingleThreadScheduledExecutor(new ThreadFactoryBuilder().setNameFormat("recordWriter").build());
-		recordWriterExecutor.scheduleAtFixedRate(recordWriterRunnable, recordWritingInitDelay, recordWritingInterval,
-				TimeUnit.MILLISECONDS);
+		if (checkpointMode == CheckpointModeConfig.SCHEDULED) {
+			checkpointExecutor = Executors.newSingleThreadScheduledExecutor(
+					new ThreadFactoryBuilder().setNameFormat("checkpointExecutor").build());
+			checkpointExecutor.scheduleAtFixedRate(checkpointRunnable, checkpointInitDelay, checkpointInterval,
+					TimeUnit.MILLISECONDS);
+		}
 	}
 
 	@Override
@@ -122,6 +136,9 @@ public class WinlogSource extends AbstractPollableSource implements Configurable
 				if (events != null && !events.isEmpty()) {
 					getChannelProcessor().processEventBatch(events);
 					eventReader.commitInMemory();
+					if (checkpointMode == CheckpointModeConfig.ONDEMOND) {
+						eventReader.persistCommit();
+					}
 					LOG.debug("Processed " + events.size() + " events");
 				} else {
 					status = Status.BACKOFF;
@@ -129,7 +146,7 @@ public class WinlogSource extends AbstractPollableSource implements Configurable
 			}
 
 			try {
-				TimeUnit.MILLISECONDS.sleep(recordReadingInterval);
+				TimeUnit.MILLISECONDS.sleep(eventInterval);
 			} catch (InterruptedException e) {
 				LOG.info("Interrupted while sleeping");
 			}

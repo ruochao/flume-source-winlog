@@ -1,6 +1,7 @@
 package com.mocircle.flume.source;
 
 import com.mocircle.flume.source.config.AuthMethodConfig;
+import com.mocircle.flume.source.config.CheckpointModeConfig;
 import com.mocircle.flume.source.config.RetrieveModeConfig;
 
 public interface WinlogSourceConstants {
@@ -76,19 +77,22 @@ public interface WinlogSourceConstants {
 	/**
 	 * 
 	 */
-	String RECORD_READING_INTERVAL = "recordReadingInterval";
-	long DEFAULT_RECORD_READING_INTERVAL = 2000;
+	String EVENT_INTERVAL = "eventInterval";
+	long DEFAULT_EVENT_INTERVAL = 2000;
+
+	String CHECKPOINT_MODE = "checkpointMode";
+	String DEFAULT_CHECKPOINT_MODE = CheckpointModeConfig.SCHEDULED.name();
 
 	/**
 	 * 
 	 */
-	String RECORD_WRITING_INTERVAL = "recordWritingInterval";
-	long DEFAULT_RECORD_WRITING_INTERVAL = 2000;
+	String CHECKPOINT_INIT_DELAY = "checkpointInitDelay";
+	long DEFAULT_CHECKPOINT_INIT_DELAY = 2000;
 
 	/**
 	 * 
 	 */
-	String RECORD_WRITING_INIT_DELAY = "recordWritingInitDelay";
-	long DEFAULT_RECORD_WRITING_INIT_DELAY = 2000;
+	String CHECKPOINT_INTERVAL = "checkpointInterval";
+	long DEFAULT_CHECKPOINT_INTERVAL = 2000;
 
 }
